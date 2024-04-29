@@ -37,6 +37,7 @@ class TestMistralClassifier:
     def test_forward(
         self, bsz: int, embed_dim: int, seq_len: int, n_classes: int, expected: float
     ):
+        print("testing")
         inputs = torch.randint(low=0, high=VOCAB_SIZE, size=(bsz, seq_len))
         model = mistral_classifier(
             num_classes=n_classes,
