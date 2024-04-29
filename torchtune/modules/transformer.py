@@ -111,7 +111,7 @@ class TransformerDecoder(nn.Module):
             to setup the :func:`~torchtune.modules.KVCache`
         norm (nn.Module): Callable that applies normalization to the output of the decoder,
             before final MLP.
-        output (nn.Linear): Callable that applies a linear transformation to the output of
+        output (nn.Module): Callable that applies a linear transformation to the output of
             the decoder.
 
     Note:
@@ -129,7 +129,7 @@ class TransformerDecoder(nn.Module):
         num_heads: int,
         head_dim: int,
         norm: nn.Module,
-        output: nn.Linear,
+        output: nn.Module,
     ) -> None:
         super().__init__()
 
@@ -206,6 +206,5 @@ class TransformerDecoder(nn.Module):
         # shape: [b, s, d]
         h = self.norm(h)
 
-        # shape: [b, s, v]
         output = self.output(h).float()
         return output
