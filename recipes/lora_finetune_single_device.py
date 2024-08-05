@@ -386,6 +386,8 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
             self.compile_time_start = time.perf_counter()
             log.info("Compiling model with torch.compile...")
             backend = os.environ.get("TORCH_COMPILE_BACKEND", "inductor")
+            # force reset of compiler
+            torch.compiler.reset()
             model.compile(backend=backend)
         if self._device.type == "cuda":
             memory_stats = utils.get_memory_stats(device=self._device)
