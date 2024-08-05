@@ -26,6 +26,7 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader, DistributedSampler
 from torchtune import config, modules, utils
 from torchtune.datasets import ConcatDataset
+from torchtune.models.llama3_1._position_embeddings import Llama3ScaledRoPE
 from torchtune.modules.peft import LoRALinear
 from torchtune.modules.peft.peft_utils import (
     get_adapter_params,
@@ -343,6 +344,8 @@ class LoRAFinetuneRecipeDistributed(FTRecipeInterface):
                 # RoPE is not covered in state dict
                 if isinstance(m, modules.RotaryPositionalEmbeddings):
                     m.reset_parameters()
+                if isinstance(m, Llama3ScaledRoPE):
+                    m._rope_init()
 
         base_missing, base_unexpected = utils.load_from_full_model_state_dict(
             model, base_model_state_dict, self._device, self._is_rank_zero

@@ -226,6 +226,7 @@ _ALL_RECIPES = [
                 name="llama2/70B_qlora",
                 file_path="dev/llama2/70B_qlora_fsdp2.yaml",
             ),
+            Config(name="llama3_1/8B_lora", file_path="llama3_1/8B_lora.yaml"),
         ],
         supports_distributed=True,
     ),

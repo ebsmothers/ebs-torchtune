@@ -40,7 +40,7 @@ class Llama3ScaledRoPE(nn.Module):
         self.dim = dim
         self.base = base
         self.max_seq_len = max_seq_len
-        self.is_cache_built = False
+        # self.is_cache_built = False
 
     # We need to explicitly define reset_parameters for FSDP initialization, see
     # https://github.com/pytorch/pytorch/blob/797d4fbdf423dd9320ebe383fb57ffb1135c4a99/torch/distributed/fsdp/_init_utils.py#L885
@@ -118,10 +118,10 @@ class Llama3ScaledRoPE(nn.Module):
             - n_h: num heads
             - h_d: head dim
         """
-        # TODO: Remove this hack for handling scaling for Meta device
-        if not self.is_cache_built:
-            with torch.device(x.device):
-                self._rope_init()
+        # # TODO: Remove this hack for handling scaling for Meta device
+        # if not self.is_cache_built:
+        #     with torch.device(x.device):
+        #         self._rope_init()
 
         # input tensor has shape [b, s, n_h, h_d]
         seq_len = x.size(1)
