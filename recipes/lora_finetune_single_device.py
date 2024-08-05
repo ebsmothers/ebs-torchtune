@@ -542,7 +542,7 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
         t0 = time.perf_counter()
         running_loss = 0
         num_tokens = 0
-
+        train_start = time.perf_counter()
         with self._profiler as prof:
             # self.epochs_run should be non-zero when we're resuming from a checkpoint
             for curr_epoch in range(self.epochs_run, self.total_epochs):
@@ -556,7 +556,8 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
                         log.info(
                             f"Time at iteration {idx}: {time.perf_counter() - self.compile_time_start}"
                         )
-
+                    if idx == 2 and curr_epoch == 0 and self.compile_model:
+                        compile_train_start = time.perf_counter()
                     if (
                         self.max_steps_per_epoch is not None
                         and (idx // self._gradient_accumulation_steps)
@@ -638,6 +639,11 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
                     prof.step()
 
                 self.epochs_run += 1
+                print(f"Total train time: {time.perf_counter() - train_start}")
+                if self.compile_model:
+                    print(
+                        f"Compile train time: {time.perf_counter() - compile_train_start}"
+                    )
                 self.save_checkpoint(epoch=curr_epoch)
 
     def cleanup(self) -> None:
