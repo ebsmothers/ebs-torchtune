@@ -86,6 +86,8 @@ def lora_llama3_1_8b(
     apply_lora_to_output: bool = False,
     lora_rank: int = 8,
     lora_alpha: float = 16,
+    lora_dropout: float = 0.05,
+    max_seq_len: int = 131072,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -119,14 +121,14 @@ def lora_llama3_1_8b(
         num_heads=32,
         num_kv_heads=8,
         embed_dim=4096,
-        max_seq_len=131072,
+        max_seq_len=max_seq_len,
         intermediate_dim=14336,
         attn_dropout=0.0,
         norm_eps=1e-5,
         rope_base=500000.0,
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
-        lora_dropout=0.05,
+        lora_dropout=lora_dropout,
         quantize_base=quantize_base,
     )
 

@@ -380,7 +380,10 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
 
         log.info(f"Model is initialized with precision {self._dtype}.")
         # Compile model, if enabled.
-        if compile_model:
+        self.compile_model = compile_model
+
+        if self.compile_model:
+            self.compile_time_start = time.perf_counter()
             log.info("Compiling model with torch.compile...")
             backend = os.environ.get("TORCH_COMPILE_BACKEND", "inductor")
             model.compile(backend=backend)
@@ -549,6 +552,11 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
 
                 pbar = tqdm(total=self._steps_per_epoch)
                 for idx, batch in enumerate(self._dataloader):
+                    if idx <= 5 and curr_epoch == 0 and self.compile_model:
+                        log.info(
+                            f"Time at iteration {idx}: {time.perf_counter() - self.compile_time_start}"
+                        )
+
                     if (
                         self.max_steps_per_epoch is not None
                         and (idx // self._gradient_accumulation_steps)
