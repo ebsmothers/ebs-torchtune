@@ -99,7 +99,7 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
     """
 
     def __init__(self, cfg: DictConfig) -> None:
-
+        self.t_start = time.perf_counter()
         self._device = utils.get_device(device=cfg.device)
         # Reduced precision logic
         self._dtype = utils.get_dtype(cfg.dtype, device=self._device)
@@ -537,6 +537,7 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
 
         # Initialize tokens count and running loss (for grad accumulation)
         t0 = time.perf_counter()
+        print(f"Setup time: {t0 - self.t_start}")
         running_loss = 0
         num_tokens = 0
 
