@@ -96,6 +96,11 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
     """
 
     def __init__(self, cfg: DictConfig) -> None:
+        self.compile_model = cfg.compile
+        if self.compile_model:
+            # force reset of compiler
+            torch.compiler.reset()
+        self.start_time = time.perf_counter()
         self._device = utils.get_device(device=cfg.device)
         self._dtype = utils.get_dtype(cfg.dtype, device=self._device)
         # Disable for fp16, as we haven't validated "full" fp16 with this recipe, nor
@@ -508,8 +513,8 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
         t0 = time.perf_counter()
         running_loss = 0
         num_tokens = 0
-
         self._profiler.start()
+        train_start = time.perf_counter()
         # self.epochs_run should be non-zero when we're resuming from a checkpoint
         for curr_epoch in range(self.epochs_run, self.total_epochs):
             # Update the sampler to ensure data is correctly shuffled across epochs
@@ -518,6 +523,10 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
 
             pbar = tqdm(total=self._steps_per_epoch)
             for idx, batch in enumerate(self._dataloader):
+                # Log compiled model train start time after first two iterations
+                if idx == 2 and curr_epoch == 0 and self.compile_model:
+                    compile_train_start = time.perf_counter()
+                    print(f"Compile start time: {compile_train_start - train_start}")
                 if (
                     self.max_steps_per_epoch is not None
                     and (idx // self._gradient_accumulation_steps)
@@ -598,6 +607,12 @@ class FullFinetuneRecipeSingleDevice(FTRecipeInterface):
                 self._profiler.step()
 
             self.epochs_run += 1
+            print(f"E2E time: {time.perf_counter() - self.start_time}")
+            print(f"Train time: {time.perf_counter() - train_start}")
+            if self.compile_model:
+                print(
+                    f"Compile train time: {time.perf_counter() - compile_train_start}"
+                )
             self.save_checkpoint(epoch=curr_epoch)
 
         self._profiler.stop()

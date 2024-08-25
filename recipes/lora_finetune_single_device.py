@@ -99,11 +99,12 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
     """
 
     def __init__(self, cfg: DictConfig) -> None:
+        self.debug = cfg.get("debug", False)
         self.compile_model = cfg.compile
-        self.start_time = time.perf_counter()
         if self.compile_model:
             # force reset of compiler
             torch.compiler.reset()
+        self.start_time = time.perf_counter()
 
         self._device = utils.get_device(device=cfg.device)
         # Reduced precision logic
@@ -542,6 +543,8 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
     def _loss_step(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         # Both are shape [b, s]
         tokens, labels = batch["tokens"], batch["labels"]
+        if self.debug:
+            print(f"Tokens shape = {tokens.shape}")
         # Get the attention mask and position ids from the dataset if they
         # exist. Currently, only sample packing in PackedDataset returns these
         mask = batch.get("mask", None)  # shape [b, s, s]
@@ -586,6 +589,9 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
                     # Log compiled model train start time after first two iterations
                     if idx == 2 and curr_epoch == 0 and self.compile_model:
                         compile_train_start = time.perf_counter()
+                        print(
+                            f"Compile start time: {compile_train_start - train_start}"
+                        )
                     if (
                         self.max_steps_per_epoch is not None
                         and (idx // self._gradient_accumulation_steps)

@@ -23,7 +23,7 @@ Llama3 8B model.
 """
 
 
-def llama3_8b() -> TransformerDecoder:
+def llama3_8b(max_seq_len: int = 8192) -> TransformerDecoder:
     """
     Builder for creating a Llama3 model initialized w/ the default 8b parameter values.
 
@@ -36,7 +36,7 @@ def llama3_8b() -> TransformerDecoder:
         num_heads=32,
         num_kv_heads=8,
         embed_dim=4096,
-        max_seq_len=8192,
+        max_seq_len=max_seq_len,
         intermediate_dim=14336,
         attn_dropout=0.0,
         norm_eps=1e-5,
@@ -44,7 +44,7 @@ def llama3_8b() -> TransformerDecoder:
     )
 
 
-def llama3_70b() -> TransformerDecoder:
+def llama3_70b(max_seq_len: int = 8192) -> TransformerDecoder:
     """
     Builder for creating a Llama3 model initialized w/ the default 70B parameter values.
 
@@ -57,7 +57,7 @@ def llama3_70b() -> TransformerDecoder:
         num_heads=64,
         num_kv_heads=8,
         embed_dim=8192,
-        max_seq_len=8192,
+        max_seq_len=max_seq_len,
         intermediate_dim=28672,
         attn_dropout=0.0,
         norm_eps=1e-5,
@@ -148,6 +148,8 @@ def lora_llama3_70b(
     apply_lora_to_output: bool = False,
     lora_rank: int = 8,
     lora_alpha: float = 16,
+    lora_dropout: float = 0.05,
+    max_seq_len: int = 8192,
     quantize_base: bool = False,
 ) -> TransformerDecoder:
     """
@@ -181,14 +183,14 @@ def lora_llama3_70b(
         num_heads=64,
         num_kv_heads=8,
         embed_dim=8192,
-        max_seq_len=8192,
+        max_seq_len=max_seq_len,
         intermediate_dim=28672,
         attn_dropout=0.0,
         norm_eps=1e-5,
         rope_base=500000.0,
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
-        lora_dropout=0.05,
+        lora_dropout=lora_dropout,
         quantize_base=quantize_base,
     )
 
