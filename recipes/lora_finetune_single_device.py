@@ -99,6 +99,11 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
     """
 
     def __init__(self, cfg: DictConfig) -> None:
+        self.compile_model = cfg.compile
+        self.start_time = time.perf_counter()
+        if self.compile_model:
+            # force reset of compiler
+            torch.compiler.reset()
 
         self._device = utils.get_device(device=cfg.device)
         # Reduced precision logic
@@ -568,7 +573,7 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
         t0 = time.perf_counter()
         running_loss = 0
         num_tokens = 0
-
+        train_start = time.perf_counter()
         with self._profiler as prof:
             # self.epochs_run should be non-zero when we're resuming from a checkpoint
             for curr_epoch in range(self.epochs_run, self.total_epochs):
@@ -578,6 +583,9 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
 
                 pbar = tqdm(total=self._steps_per_epoch)
                 for idx, batch in enumerate(self._dataloader):
+                    # Log compiled model train start time after first two iterations
+                    if idx == 2 and curr_epoch == 0 and self.compile_model:
+                        compile_train_start = time.perf_counter()
                     if (
                         self.max_steps_per_epoch is not None
                         and (idx // self._gradient_accumulation_steps)
@@ -657,6 +665,12 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
                     prof.step()
 
                 self.epochs_run += 1
+                print(f"E2E time: {time.perf_counter() - self.start_time}")
+                print(f"Train time: {time.perf_counter() - train_start}")
+                if self.compile_model:
+                    print(
+                        f"Compile train time: {time.perf_counter() - compile_train_start}"
+                    )
                 self.save_checkpoint(epoch=curr_epoch)
 
     def cleanup(self) -> None:
