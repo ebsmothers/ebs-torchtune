@@ -92,11 +92,9 @@ class _CheckpointerInterface(Protocol):
 
     """
 
-    def load_checkpoint(self, **kwargs) -> Dict[str, Any]:
-        ...
+    def load_checkpoint(self, **kwargs) -> Dict[str, Any]: ...
 
-    def save_checkpoint(self, state_dict: Dict[str, Any], **kwargs) -> None:
-        ...
+    def save_checkpoint(self, state_dict: Dict[str, Any], **kwargs) -> None: ...
 
 
 class FullModelTorchTuneCheckpointer(_CheckpointerInterface):
@@ -632,14 +630,33 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     "Saving Phi-3 Mini adapter weights to PEFT format is not supported, saving to torchtune format instead"
                 )
             else:
-                state_dict[
-                    training.ADAPTER_KEY
-                ] = convert_weights.tune_to_peft_adapter_weights(
-                    state_dict[training.ADAPTER_KEY],
-                    num_heads=self._config["num_attention_heads"],
-                    num_kv_heads=self._config["num_key_value_heads"],
-                    dim=self._config["hidden_size"],
-                    head_dim=self._config.get("head_dim", None),
+                if self._model_type == ModelType.LLAMA3_VISION:
+                    config = self._config["text_config"]
+                    strip_leading_str = "decoder"
+                else:
+                    config = self._config
+                    strip_leading_str = None
+
+                state_dict[training.ADAPTER_KEY] = (
+                    convert_weights.tune_to_peft_adapter_weights(
+                        state_dict[training.ADAPTER_KEY],
+                        num_heads=config["num_attention_heads"],
+                        num_kv_heads=config["num_key_value_heads"],
+                        dim=config["hidden_size"],
+                        head_dim=config.get("head_dim", None),
+                        strip_leading_str=strip_leading_str
+                    )
+                )
+            else:
+                config = self._config
+                state_dict[training.ADAPTER_KEY] = (
+                    convert_weights.tune_to_peft_adapter_weights(
+                        state_dict[training.ADAPTER_KEY],
+                        num_heads=config["num_attention_heads"],
+                        num_kv_heads=config["num_key_value_heads"],
+                        dim=config["hidden_size"],
+                        head_dim=config.get("head_dim", None),
+                    )
                 )
                 peft_output_path = Path.joinpath(
                     self._output_dir, "adapter_model"
@@ -661,10 +678,10 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                     "PEFT integration for Phi-3 Mini is not supported, skipping adapter config save"
                 )
             else:
-                state_dict[
-                    training.ADAPTER_CONFIG
-                ] = convert_weights.tune_to_peft_adapter_config(
-                    state_dict[training.ADAPTER_CONFIG]
+                state_dict[training.ADAPTER_CONFIG] = (
+                    convert_weights.tune_to_peft_adapter_config(
+                        state_dict[training.ADAPTER_CONFIG]
+                    )
                 )
                 output_path = Path.joinpath(self._output_dir, "adapter_config.json")
                 with open(output_path, "w") as f:

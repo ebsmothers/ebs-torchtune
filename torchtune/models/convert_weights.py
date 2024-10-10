@@ -45,13 +45,21 @@ _FROM_HF = {
 }
 
 
-def get_mapped_key(key: str, mapping_dict: Dict[str, str]) -> str:
+def get_mapped_key(
+    key: str, mapping_dict: Dict[str, str], strip_leading_str: str = None
+) -> str:
+    if key == "decoder.layers.0.attn.q_proj.lora_a.weight":
+        import pdb
+
+        pdb.set_trace()
     try:
         # Checks if there is a layer # in the key
         if any(k.isdigit() for k in key.split(".")):
             # Replace layer number with "{}" to create key for lookup
             abstract_key = re.sub(r"(\.\d+)", ".{}", key)
             layer_num = re.search(r"\d+", key).group(0)
+            if strip_leading_str:
+                abstract_key = abstract_key.removeprefix(strip_leading_str)
             new_key = mapping_dict[abstract_key]
             new_key = new_key.format(layer_num)
         else:
@@ -253,6 +261,7 @@ def tune_to_peft_adapter_weights(
     num_kv_heads: int = 32,
     dim: int = 4096,
     head_dim: int = None,
+    strip_leading_str: str = None,
 ):
     converted_state_dict = {}
     full_mapping = {}
@@ -282,7 +291,7 @@ def tune_to_peft_adapter_weights(
         )
 
     for key, value in state_dict.items():
-        new_key = get_mapped_key(key, full_mapping)
+        new_key = get_mapped_key(key, full_mapping, strip_leading_str=strip_leading_str)
         if "q_proj" in new_key and "lora_B" in new_key:
             value = _permute_lora_matrix(value, num_heads)
         elif "k_proj" in new_key and "lora_B" in new_key:
