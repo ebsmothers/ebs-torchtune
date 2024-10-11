@@ -5,6 +5,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import math
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 import torch
@@ -470,12 +471,85 @@ def tune_to_peft_adapter_config(
     return adapter_config
 
 
-def tune_to_peft_adapter_weights(
+def get_mapped_key_with_prefix(
+    key: str, mapping_dict: Dict[str, str], ignore_leading_str: str = None
+) -> str:
+    if key in [
+        "decoder.layers.3.layer.attn.q_proj.lora_a.weight",
+        "decoder.layers.0.attn.q_proj.lora_a.weight",
+    ]:
+        import pdb
+
+        pdb.set_trace()
+    try:
+        # Checks if there is a layer # in the key
+        if any(k.isdigit() for k in key.split(".")):
+            # Replace layer number with "{}" to create key for lookup
+            abstract_key = re.sub(r"(\.\d+)", ".{}", key)
+            layer_num = re.search(r"\d+", key).group(0)
+            # if ignore_leading_str:
+            #     abstract_key = abstract_key.removeprefix(ignore_leading_str)
+            new_key = mapping_dict[abstract_key]
+            new_key = new_key.format(layer_num)
+        else:
+            new_key = mapping_dict[key]
+    except KeyError as e:
+        raise Exception(
+            f'Error converting the state dict. Found unexpected key: "{key}". '
+            "Please make sure you're loading a checkpoint with the right format. "
+        ) from e
+
+    return ignore_leading_str + new_key
+
+
+# Mapping from torchtune LoRA module names to PEFT LoRA module names
+_TO_PEFT_KEYS = {
+    "lora_a": "lora_A",
+    "lora_b": "lora_B",
+    "magnitude": "lora_magnitude_vector",
+}
+
+# Mapping from torchtune module names to target modules for PEFT adapter config
+_TO_PEFT_TARGET_MODULES = {
+    "q_proj": "q_proj",
+    "k_proj": "k_proj",
+    "v_proj": "v_proj",
+    "output_proj": "o_proj",
+    "w1": "gate_proj",
+    "w2": "down_proj",
+    "w3": "up_proj",
+    "output": "lm_head",
+}
+
+# Keys expected in PEFT's adapter_config.json
+_PEFT_CONFIG_EXPECTED_KEYS = ["target_modules", "r", "lora_alpha"]
+
+
+def tune_to_peft_adapter_config(
+    adapter_config: Dict[str, Any],
+):
+    if not all([x in adapter_config.keys() for x in _PEFT_CONFIG_EXPECTED_KEYS]):
+        raise ValueError(
+            f"PEFT adapter config requires {_PEFT_CONFIG_EXPECTED_KEYS}, found {adapter_config.keys()}"
+        )
+
+    for k in adapter_config["target_modules"]:
+        if k not in _TO_PEFT_TARGET_MODULES:
+            raise ValueError(f"Unknown target module {k}")
+    adapter_config["target_modules"] = list(
+        map(_TO_PEFT_TARGET_MODULES.get, adapter_config["target_modules"])
+    )
+
+    return adapter_config
+
+
+def llama3_vision_tune_to_peft_adapter_weights(
     state_dict: Dict[str, torch.Tensor],
     num_heads: int = 32,
     num_kv_heads: int = 32,
     dim: int = 4096,
     head_dim: int = None,
+    ignore_leading_str: str = "decoder",
 ):
     converted_state_dict = {}
     full_mapping = {}
@@ -505,7 +579,9 @@ def tune_to_peft_adapter_weights(
         )
 
     for key, value in state_dict.items():
-        new_key = get_mapped_key(key, full_mapping)
+        new_key = get_mapped_key_with_prefix(
+            key, full_mapping, ignore_leading_str=ignore_leading_str
+        )
         if "q_proj" in new_key and "lora_B" in new_key:
             value = _permute_lora_matrix(value, num_heads)
         elif "k_proj" in new_key and "lora_B" in new_key:

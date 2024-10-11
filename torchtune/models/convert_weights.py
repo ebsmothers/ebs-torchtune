@@ -48,7 +48,7 @@ _FROM_HF = {
 def get_mapped_key(
     key: str, mapping_dict: Dict[str, str], strip_leading_str: str = None
 ) -> str:
-    if key == "decoder.layers.0.attn.q_proj.lora_a.weight":
+    if key == "decoder.layers.3.layer.attn.q_proj.lora_a.weight":
         import pdb
 
         pdb.set_trace()
