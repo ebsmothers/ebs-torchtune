@@ -28,6 +28,7 @@ tokenizer:
   _component_: torchtune.models.llama3_2_vision.llama3_2_vision_transform
   path: /tmp/Llama-3.2-11B-Vision-Instruct/original/tokenizer.model
   image_size: 560
+  max_seq_len: 8192
 
 # Checkpointer
 checkpointer:
@@ -66,7 +67,7 @@ device: cuda
 
 # Memory management
 enable_activation_checkpointing: True
-custom_sharded_layers: ['tok_embeddings', 'output']
+custom_sharded_layers: ['decoder.tok_embeddings']
 dtype: bf16
 
 # Logging

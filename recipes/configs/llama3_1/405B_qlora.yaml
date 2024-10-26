@@ -12,11 +12,7 @@
 # This config needs 8 GPUs to run
 #   # tune run --nproc_per_node 8 lora_finetune_distributed --config llama3_1/405B_qlora
 #
-# !!!!!!!!!!!!!
-# !!!!!!!!!!!!!
-# ATTENTION: It will only work with pytorch>=2.5 (nightlies). For other pytorch versions, it will OOM, even on 8xA100.
-# !!!!!!!!!!!!!
-# !!!!!!!!!!!!!
+
 
 # Model Arguments
 model:
@@ -58,7 +54,7 @@ optimizer:
   lr: 3e-4
   fused: True
 lr_scheduler:
-  _component_: torchtune.modules.get_cosine_schedule_with_warmup
+  _component_: torchtune.training.lr_schedulers.get_cosine_schedule_with_warmup
   num_warmup_steps: 100
 
 loss:
