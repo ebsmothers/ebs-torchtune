@@ -26,6 +26,7 @@ from torch.distributed.checkpoint import (
 
 from torchtune import training
 from torchtune.models import convert_weights
+
 from torchtune.training.checkpointing._utils import (
     ADAPTER_CONFIG_FNAME,
     ADAPTER_MODEL_FNAME,
@@ -538,8 +539,19 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
             )
             from torchtune.models.phi3._convert_weights import phi3_hf_to_tune
 
+            num_heads = self._config["num_attention_heads"]
+            num_kv_heads = self._config["num_key_value_heads"]
+            dim = self._config["hidden_size"]
+
+            # Should only pass num_heads, num_kv_heads, dim for GQA
+            if num_heads == num_kv_heads:
+                num_heads, num_kv_heads, dim = None, None, None
+
             converted_state_dict[training.MODEL_KEY] = phi3_hf_to_tune(
-                merged_state_dict
+                merged_state_dict,
+                num_heads=num_heads,
+                num_kv_heads=num_kv_heads,
+                dim=dim,
             )
         elif self._model_type == ModelType.REWARD:
             from torchtune.rlhf.utils import reward_hf_to_tune
@@ -597,12 +609,6 @@ class FullModelHFCheckpointer(_CheckpointerInterface):
                 num_kv_heads=self._config["num_key_value_heads"],
                 dim=self._config["hidden_size"],
                 head_dim=self._config.get("head_dim", None),
-            )
-        elif self._model_type == ModelType.T5_ENCODER:
-            from torchtune.models.t5._convert_weights import t5_encoder_hf_to_tune
-
-            converted_state_dict[training.MODEL_KEY] = t5_encoder_hf_to_tune(
-                merged_state_dict,
             )
         else:
             converted_state_dict[training.MODEL_KEY] = convert_weights.hf_to_tune(
@@ -943,6 +949,7 @@ class FullModelMetaCheckpointer(_CheckpointerInterface):
 
     Raises:
         ValueError: If ``checkpoint_files`` is not a list of length 1
+        ValueError: If ``should_load_recipe_state`` is True but ``recipe_checkpoint`` is None
     """
 
     def __init__(
