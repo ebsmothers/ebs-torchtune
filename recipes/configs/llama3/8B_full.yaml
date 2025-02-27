@@ -35,7 +35,9 @@ shuffle: True
 
 # Model Arguments
 model:
-  _component_: torchtune.models.llama3.llama3_8b
+  _component_: torchtitan.models.llama.model.llama3_8b
+
+tensor_parallel_dim: 2
 
 checkpointer:
   _component_: torchtune.training.FullModelMetaCheckpointer
@@ -57,7 +59,7 @@ optimizer:
   lr: 2e-5
   fused: True
 loss:
-  _component_: torchtune.modules.loss.CEWithChunkedOutputLoss
+  _component_: torch.nn.CrossEntropyLoss
 max_steps_per_epoch: null
 gradient_accumulation_steps: 1  # Use to increase effective batch size
 clip_grad_norm: null

@@ -8,17 +8,18 @@ from typing import List, Optional
 
 from torch import nn
 
-from torchtune.models.llama3._model_utils import scale_hidden_dim_for_mlp
-
-from torchtune.modules import (
+from torchtitan.modules import (
     FeedForward,
-    FrozenNF4Linear,
     MultiHeadAttention,
     RMSNorm,
     RotaryPositionalEmbeddings,
     TransformerDecoder,
     TransformerSelfAttentionLayer,
 )
+
+from torchtune.models.llama3._model_utils import scale_hidden_dim_for_mlp
+
+from torchtune.modules import FrozenNF4Linear
 
 from torchtune.modules.common_utils import _register_reparametrize_state_dict_hooks
 
@@ -104,7 +105,11 @@ def llama3(
             max_seq_len=max_seq_len,
             attn_dropout=attn_dropout,
         )
-        mlp = llama3_mlp(dim=embed_dim, hidden_dim=hidden_dim)
+        mlp = FeedForward(
+            gate_proj=nn.Linear(embed_dim, hidden_dim, bias=False),
+            down_proj=nn.Linear(hidden_dim, embed_dim, bias=False),
+            up_proj=nn.Linear(embed_dim, hidden_dim, bias=False),
+        )
         layer = TransformerSelfAttentionLayer(
             attn=self_attn,
             mlp=mlp,

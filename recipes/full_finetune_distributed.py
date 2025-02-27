@@ -145,14 +145,14 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
         # Initialize distributed variables
         self.world_size, self.rank = utils.get_world_size_and_rank()
         self._is_rank_zero = self.rank == 0
-        self.tensor_parallel_plan = config.instantiate(
-            cfg.get("tensor_parallel_plan", None)
-        )
+        # self.tensor_parallel_plan = config.instantiate(
+        #     cfg.get("tensor_parallel_plan", None)
+        # )
         self.tensor_parallel_dim = cfg.get("tensor_parallel_dim", 1)
-        if self.tensor_parallel_dim > 1 and self.tensor_parallel_plan is None:
-            raise ValueError(
-                "Tensor Parallel plan needs to be provided when tensor parallel is enabled."
-            )
+        # if self.tensor_parallel_dim > 1 and self.tensor_parallel_plan is None:
+        #     raise ValueError(
+        #         "Tensor Parallel plan needs to be provided when tensor parallel is enabled."
+        #     )
         if self.world_size % self.tensor_parallel_dim != 0:
             raise ValueError(
                 f"world_size {self.world_size} must be divisible by tensor_parallel_dim {self.tensor_parallel_dim}"
@@ -337,10 +337,6 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
 
         if self._compile:
             training.compile_loss(self._loss_fn, verbose=self._is_rank_zero)
-
-        if self._loss_fn.__class__.__name__ == "CEWithChunkedOutputLoss":
-            # set num_output_chunks for model
-            self._model.set_num_output_chunks(self._loss_fn.num_output_chunks)
 
         utils.log_rank_zero(log, "Loss is initialized.")
 
@@ -543,58 +539,30 @@ class FullFinetuneRecipeDistributed(FTRecipeInterface):
         )
         self.dp_size = device_mesh["dp"].size()
         self.dp_rank = device_mesh["dp"].get_local_rank()
+        tp_device_mesh = torch.distributed.init_device_mesh(
+            "cuda", (self.tensor_parallel_dim,)
+        )
+        model = training.prepare_mha_for_tp(model, tp_device_mesh)
+        from torchtitan.distributed.parallel_dims import ParallelDims
+        from torchtitan.models.llama.parallelize_llama import parallelize_model
 
-        # Apply tensor parallelism to the model
-        if self.tensor_parallel_dim > 1:
-            # Use the local number (num_heads, num_kv_heads, embed_dim) to account for tensor parallel
-            model = training.prepare_mha_for_tp(model, device_mesh["tp"])
-            parallelize_module(
-                model,
-                device_mesh["tp"],
-                parallelize_plan=self.tensor_parallel_plan,
-            )
-
-        # We currently have two versions of activation checkpointing in this recipe
-        # for testing and BC purposes. ``enable_activation_checkpointing`` controls
-        # the older version of AC and this behavior is unchanged
-        # ac_mode and ac_option together control selective AC. This is only enabled
-        # when these are set AND ``enable_activation_checkpointing`` is set to False
-        # We'll clean this up as soon as testing of AC is complete
-        if (not enable_activation_checkpointing) and (ac_mode is not None):
-            apply_selective_activation_checkpointing(
-                model,
-                ac_mode,
-                ac_option,
-            )
-
-        # original activation checkpointing (full) - flip the condition above
-        if enable_activation_checkpointing and ac_mode is None:
-            training.set_activation_checkpointing(
-                model, auto_wrap_policy={modules.TransformerSelfAttentionLayer}
-            )
-
-        # Apply Fully Sharded Data Parallelism to the model
-        if self.data_parallel_dim > 1:
-            fsdp_shard_conditions = [
-                partial(
-                    training.get_shard_conditions,
-                    names_to_match=custom_sharded_layers,
-                )
-            ]
-            training.shard_model(
-                model=model,
-                shard_conditions=fsdp_shard_conditions,
-                cpu_offload=fsdp_cpu_offload,
-                reshard_after_forward=reshard_after_forward,
-                dp_mesh=device_mesh["dp"],
-            )
+        parallel_dims = ParallelDims(
+            dp_replicate=1,
+            dp_shard=self.dp_size,
+            cp=1,
+            tp=self.tensor_parallel_dim,
+            pp=1,
+            world_size=self.world_size,
+            enable_loss_parallel=False,
+        )
+        device_mesh = parallel_dims.build_mesh("cuda")
+        parallelize_model(model, device_mesh, parallel_dims)
 
         with training.set_default_dtype(self._dtype), self._device:
             for m in model.modules():
                 # RoPE is not covered in state dict
                 if hasattr(m, "rope_init"):
                     m.rope_init()
-
         # This method will convert the full model state dict into a sharded state
         # dict and load into the model
         training.load_from_full_model_state_dict(
