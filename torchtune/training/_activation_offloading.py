@@ -15,7 +15,7 @@ from torch import nn
 from torch.autograd.graph import saved_tensors_hooks
 from torchao.dtypes.nf4tensor import NF4Tensor
 
-from torchtune.modules import TiedLinear
+from torchtune.modules import DeepFusionModel, TiedLinear
 from torchtune.utils import get_logger
 
 log = get_logger("DEBUG")
@@ -424,22 +424,24 @@ def get_act_offloading_ctx_manager(
                 )
                 output_head_detected = True
 
-        elif hasattr(model, "decoder"):
+        elif isinstance(model, DeepFusionModel):
             # TODO: it errors out. Needs debugging.
             # assert_size_stride(rsqrt_2, (4, 32, 1601, 1), (52224, 1632, 1, 1))
             # AssertionError: expected size 4==4, stride 51232==52224 at dim=0;
             # # expected size 32==32, stride 1601==1632 at dim=1
             raise NotImplementedError(
-                "Multimodal model does not support activation offloading yet. Please set enable_activation_offloading=False"
+                "Deep fusion models do not support activation offloading yet. Please set enable_activation_offloading=False"
             )
-            # if isinstance(model.decoder, nn.Module):
-            #     model.decoder.output.register_forward_pre_hook(
-            #         lambda *args: noop_ctx.__enter__()
-            #     )
-            #     model.decoder.output.register_forward_hook(
-            #         lambda *args: noop_ctx.__exit__(), always_call=True
-            #     )
-            #     output_head_detected = True
+
+        elif hasattr(model, "decoder"):
+            if isinstance(model.decoder, nn.Module):
+                model.decoder.output.register_forward_pre_hook(
+                    lambda *args: noop_ctx.__enter__()
+                )
+                model.decoder.output.register_forward_hook(
+                    lambda *args: noop_ctx.__exit__(), always_call=True
+                )
+                output_head_detected = True
 
         if not output_head_detected:
             log.warning(
