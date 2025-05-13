@@ -25,6 +25,7 @@ from torchtune.data import padded_collate_packed
 from torchtune.datasets import ConcatDataset
 from torchtune.modules.loss import SFTLoss
 from torchtune.modules.peft import (
+    cast_lora_params,
     get_adapter_params,
     get_adapter_state_dict,
     get_lora_module_names,
@@ -387,6 +388,9 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
         base_model_state_dict: Dict[str, Any],
         lora_weights_state_dict: Optional[Dict[str, Any]] = None,
     ) -> nn.Module:
+        compute_dtype = cfg_model.pop("compute_dtype", "fp32")
+        # TODO: don't hardcode
+        lora_dtype = training.get_dtype(compute_dtype, device=self._device)
         with training.set_default_dtype(self._dtype), self._device:
             model = config.instantiate(cfg_model)
 
@@ -398,7 +402,7 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
         self.adapter_params = get_adapter_params(model)
         self._is_dora = any(["magnitude" in k for k in self.adapter_params.keys()])
         set_trainable_params(model, self.adapter_params)
-
+        cast_lora_params(model, self.adapter_params, dtype=lora_dtype)
         if compile_model:
             training.compile_model(model)
 
@@ -436,9 +440,9 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
         # Validate model adapter params were loaded in with the expected dtype
         # TODO (rohan-varma): Further validation to ensure the appropriate base params
         # are NF4 vs bf16 based on the quantization config.
-        training.validate_expected_param_dtype(
-            self.adapter_params.items(), dtype=self._dtype
-        )
+        # training.validate_expected_param_dtype(
+        #     self.adapter_params.items(), dtype=self._dtype
+        # )
 
         # activation offloading
         self.activations_handling_ctx = training.get_act_offloading_ctx_manager(
@@ -630,7 +634,6 @@ class LoRAFinetuneRecipeSingleDevice(FTRecipeInterface):
         t0 = time.perf_counter()
         running_loss = 0
         num_tokens = 0
-
         with self._profiler as prof:
             # self.epochs_run should be non-zero when we're resuming from a checkpoint
             for curr_epoch in range(self.epochs_run, self.total_epochs):

@@ -133,6 +133,8 @@ class LoRALinear(nn.Module, AdapterModule):
             torch.Tensor: output tensor with shape ``(..., out_dim)``
 
         """
+        orig_dtype = x.dtype
+
         if self._quantize_base:
             out = linear_nf4(input=x, weight=self.weight)
             if self.use_bias:
@@ -141,9 +143,9 @@ class LoRALinear(nn.Module, AdapterModule):
             out = F.linear(x, self.weight, self.bias)
         if self.disabled:
             return out
-        lora_out = self.lora_a(self.dropout(x))
+        lora_out = self.lora_a(self.dropout(x.to(self.lora_a.weight.dtype)))
         lora_out = (self.alpha / self.rank) * self.lora_b(lora_out)
-        return out + lora_out
+        return (out + lora_out).to(orig_dtype)
 
 
 class QATLoRALinear(LoRALinear):

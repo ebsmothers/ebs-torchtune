@@ -28,6 +28,7 @@ from torchtune.datasets import ConcatDataset
 from torchtune.modules.loss import SFTLoss
 from torchtune.modules.peft import (
     AdapterModule,
+    cast_lora_params,
     get_adapter_params,
     get_adapter_state_dict,
     get_lora_module_names,
@@ -444,6 +445,8 @@ class LoRAFinetuneRecipeDistributed(FTRecipeInterface):
               full state dicts are loaded with ``torch.load(mmap=True)``
            c. We register (pre-)forward hooks with ``fully_shard`` instead of wrapping `nn.Module`
         """
+        compute_dtype = cfg_model.pop("compute_dtype", "fp32")
+        lora_dtype = training.get_dtype(compute_dtype, device=self._device)
 
         self._lora_rank = cfg_model.lora_rank
         self._lora_alpha = cfg_model.lora_alpha
@@ -460,7 +463,9 @@ class LoRAFinetuneRecipeDistributed(FTRecipeInterface):
         with training.set_default_dtype(self._dtype), torch.device("meta"):
             model = config.instantiate(cfg_model)
 
-        set_trainable_params(model, get_adapter_params(model))
+        self.adapter_params = get_adapter_params(model)
+        set_trainable_params(model, self.adapter_params)
+        cast_lora_params(model, self.adapter_params, dtype=lora_dtype)
 
         if self._compile:
             training.compile_model(model, verbose=self._is_rank_zero)
@@ -482,6 +487,7 @@ class LoRAFinetuneRecipeDistributed(FTRecipeInterface):
             shard_conditions=fsdp_shard_conditions,
             cpu_offload=fsdp_cpu_offload,
             reshard_after_forward=reshard_after_forward,
+            shard_lora_separately=(compute_dtype == "fp32"),
         )
 
         if lora_weights_state_dict:

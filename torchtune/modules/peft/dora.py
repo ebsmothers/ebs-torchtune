@@ -9,8 +9,8 @@ from typing import List, Optional, Union
 
 import torch
 import torch.nn.functional as F
-
 from torch import nn
+from torch.distributed.tensor import DTensor
 
 from torchao.dtypes.nf4tensor import linear_nf4, to_nf4
 from torchtune.modules.low_precision import _register_nf4_dispatch_ops  # noqa: F401
@@ -100,7 +100,7 @@ class DoRALinear(nn.Module, AdapterModule):
         self.lora_b.to_empty(device=device, recurse=recurse)
 
         magnitude = nn.Parameter(
-            torch.empty_like(self.magnitude, device=device),
+            torch.empty_like(self.magnitude, device=device, dtype=torch.bfloat16),
             requires_grad=self.magnitude.requires_grad,
         )
         torch.utils.swap_tensors(self.magnitude, magnitude)
@@ -134,7 +134,11 @@ class DoRALinear(nn.Module, AdapterModule):
                 "Cannot initialize DoRA magnitude if base or LoRA parameters are still on meta device."
             )
         base_weight = self.weight.to(self.lora_a.weight.dtype)
+        if isinstance(base_weight, DTensor):
+            base_weight = base_weight.full_tensor()
         lora_weight = self.lora_b.weight @ self.lora_a.weight
+        if isinstance(lora_weight, DTensor):
+            lora_weight = lora_weight.full_tensor()
         self.magnitude.copy_(self._get_weight_norm(base_weight, lora_weight))
 
     def _get_weight_norm(self, weight, lora_weight):
@@ -160,6 +164,7 @@ class DoRALinear(nn.Module, AdapterModule):
         Returns:
             Tensor: output tensor with shape ``(..., out_dim)``
         """
+        orig_dtype = x.dtype
         if self._quantize_base:
             base_out = linear_nf4(input=x, weight=self.weight)
             if self.use_bias:
@@ -171,11 +176,13 @@ class DoRALinear(nn.Module, AdapterModule):
 
         x = self.dropout(x)
 
-        lora_out = self.lora_b(self.lora_a(x))
+        lora_out = self.lora_b(self.lora_a(x.to(self.lora_a.weight.dtype)))
         # Can't use raw matmul since FSDP hooks are attached to __call__
         # Instead follow the approach in https://github.com/huggingface/peft/pull/1806
         x_eye = torch.eye(
-            self.lora_a.weight.shape[1], device=self.lora_a.weight.device, dtype=x.dtype
+            self.lora_a.weight.shape[1],
+            device=self.lora_a.weight.device,
+            dtype=self.lora_a.weight.dtype,
         )
         lora_weight = self.lora_b(self.lora_a(x_eye)).T
         magnitude = self.magnitude
@@ -188,7 +195,7 @@ class DoRALinear(nn.Module, AdapterModule):
             mag_norm_scale - 1
         ) * base_out + mag_norm_scale * lora_out * self.scaling
 
-        return dora_out + base_out
+        return (dora_out + base_out).to(orig_dtype)
 
 
 def _lora_a_init_params(x: nn.Linear) -> None:

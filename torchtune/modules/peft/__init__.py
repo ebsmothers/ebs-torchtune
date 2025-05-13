@@ -6,6 +6,7 @@
 
 from ._utils import (  # noqa
     AdapterModule,
+    cast_lora_params,
     disable_adapter,
     get_adapter_params,
     get_adapter_state_dict,

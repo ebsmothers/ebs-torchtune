@@ -93,6 +93,30 @@ def set_trainable_params(
         v.requires_grad_(k in adapter_params)
 
 
+@torch.no_grad
+def cast_lora_params(
+    model: nn.Module,
+    adapter_params: Union[Dict[str, Any], Set],
+    dtype: torch.dtype,
+) -> None:
+    """
+    # TODO: update docstring
+
+    Args:
+        model (nn.Module): Instance of model class containing some adapter params.
+        adapter_params (Union[Dict[str, Any], Set]): State dict mapping adapter key names to their
+            respective nn.Parameters (i.e. outputs of :func:`~torchtune.modules.peft.get_adapter_params`.)
+        dtype (torch.dtype): Dtype that the adapter params should be cast to.
+
+    Returns:
+        None
+    """
+    for k, v in model.named_parameters():
+        # TODO: does this work with meta init?
+        if k in adapter_params:
+            v.data = v.data.to(dtype=dtype)
+
+
 def get_lora_module_names(
     lora_attn_modules: List[LORA_ATTN_MODULES],
     apply_lora_to_mlp: bool,

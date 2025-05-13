@@ -619,6 +619,7 @@ def shard_model(
     cpu_offload: bool,
     reshard_after_forward: bool = True,
     dp_mesh: Optional[DeviceMesh] = None,
+    shard_lora_separately: bool = False,
 ) -> None:
     """
     Utility to shard a model with FSDP using the PyTorch Distributed fully_shard API.
@@ -639,6 +640,8 @@ def shard_model(
             from FSDP1, while setting it to False corresponds to the SHARD_GRAD_OP sharding strategy.
         dp_mesh (Optional[DeviceMesh]): Device mesh to use for FSDP sharding under mutliple parallelism.
             Default to None.
+        shard_lora_separately (bool): Whether to shard LoRA params in their own param groups.
+            This should be done if e.g. LoRA weights are stored in a higher precision.
 
     Raises:
         ValueError: If no layer modules were sharded, indicating that no shard_condition was triggered.
@@ -647,12 +650,27 @@ def shard_model(
     if cpu_offload:
         fsdp_kwargs["offload_policy"] = CPUOffloadPolicy()
 
+    # mp_policy = MixedPrecisionPolicy(param_dtype=torch.float32)
+
     # Shard the model with FSDP, iterating in reverse to start with
     # lowest-level modules first
     num_layers_sharded = 0
+    from torchtune.modules.peft import DoRALinear, LoRALinear
+
     for n, m in reversed(list(model.named_modules())):
+        if shard_lora_separately:
+            if isinstance(m, LoRALinear) or isinstance(m, DoRALinear):
+                fully_shard(m.lora_a, **fsdp_kwargs)
+                fully_shard(m.lora_b, **fsdp_kwargs)
         if any([shard_condition(n, m) for shard_condition in shard_conditions]):
-            fully_shard(m, **fsdp_kwargs)
+            ignored_params = {
+                p for name, p in m.named_parameters() if "magnitude" in name
+            }
+            fully_shard(
+                m,
+                ignored_params=ignored_params,
+                **fsdp_kwargs,
+            )
             num_layers_sharded += 1
 
     if num_layers_sharded == 0:
