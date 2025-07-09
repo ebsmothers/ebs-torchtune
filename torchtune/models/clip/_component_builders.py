@@ -279,10 +279,13 @@ def lora_clip_vision_encoder(
     activation: Callable = nn.SiLU,
     cls_output_dim: int = 512,
     attn_bias: bool = False,
+    use_rope: bool = False,
     out_indices: Optional[list[int]] = None,
     output_cls_projection: bool = False,
     max_num_tiles: int = 4,
     in_channels: int = 3,
+    append_cls_token: bool = False,
+    use_tile_pos_embed: bool = True,
     # LoRA parameters
     lora_rank: int = 8,
     lora_alpha: float = 16,
@@ -359,6 +362,10 @@ def lora_clip_vision_encoder(
         use_dora=use_dora,
         quantize_base=quantize_base,
         attn_bias=attn_bias,
+        patch_size=patch_size,
+        tile_size=tile_size,
+        use_rope=use_rope,
+        append_cls_token=append_cls_token,
         **quantization_kwargs,
     )
     if apply_lora_to_mlp:
@@ -393,13 +400,7 @@ def lora_clip_vision_encoder(
     )
 
     # position embeddings
-    if max_num_tiles == 1:
-        pre_tile_pos_embed = None
-        post_tile_pos_embed = None
-        token_pos_embedding = TokenPositionalEmbedding(
-            embed_dim=embed_dim, patch_size=patch_size, tile_size=tile_size
-        )
-    else:
+    if use_tile_pos_embed and max_num_tiles > 1:
         pre_tile_pos_embed = TilePositionalEmbedding(
             max_num_tiles=max_num_tiles, embed_dim=embed_dim
         )
@@ -411,6 +412,13 @@ def lora_clip_vision_encoder(
             embed_dim=embed_dim,
             patch_size=patch_size,
             tile_size=tile_size,
+        )
+    else:
+
+        pre_tile_pos_embed = None
+        post_tile_pos_embed = None
+        token_pos_embedding = TokenPositionalEmbedding(
+            embed_dim=embed_dim, patch_size=patch_size, tile_size=tile_size
         )
 
     model = VisionTransformer(
@@ -447,6 +455,10 @@ def lora_clip_attention(
     num_kv_heads: int,
     attn_dropout: float = 0.0,
     attn_bias: bool = False,
+    patch_size: Optional[int] = None,
+    tile_size: Optional[int] = None,
+    use_rope: bool = False,
+    append_cls_token: bool = False,
     # LoRA args
     lora_rank: int,
     lora_alpha: float,
@@ -474,6 +486,13 @@ def lora_clip_attention(
         attn_dropout (float): dropout value passed onto scaled_dot_product_attention.
             Default: 0.0
         attn_bias (bool): whether to use bias in Q, K, V, output projections. Default: False
+        patch_size (int): The size of each patch. Used to divide the tiles into patches.
+            E.g. for ``patch_size=40``, a tile of shape (400, 400) will have
+            10x10 grid of patches with shape (40, 40) each.
+        tile_size (int): The size of your image tiles, if the image was tile-cropped in advance. Otherwise
+            the size of the input image. In this case, the function will consider your image as a single tile.
+        use_rope (bool): Whether to use rotary positional embeddings. Default: False
+        append_cls_token (bool): Whether to append a CLS token to the input. Default: False
         lora_rank (int): rank of each low-rank approximation
         lora_alpha (float): scaling factor for the low-rank approximation
         lora_dropout (float): LoRA dropout probability. Default: 0.0
@@ -585,6 +604,22 @@ def lora_clip_attention(
         )
     )
 
+    if use_rope and patch_size is None or tile_size is None:
+        raise ValueError(
+            "If using rope, must provide patch_size and tile_size to the attention module"
+        )
+    rope = (
+        VisionRotaryPositionalEmbeddings(
+            patch_size=patch_size,
+            tile_size=tile_size,
+            dim=head_dim,
+            base=10_000,
+            append_cls_token=append_cls_token,
+        )
+        if use_rope
+        else None
+    )
+
     self_attn = MultiHeadAttention(
         embed_dim=embed_dim,
         num_heads=num_heads,
@@ -594,7 +629,7 @@ def lora_clip_attention(
         k_proj=k_proj,
         v_proj=v_proj,
         output_proj=output_proj,
-        pos_embeddings=None,
+        pos_embeddings=rope,
         attn_dropout=attn_dropout,
     )
     return self_attn
